@@ -1,6 +1,6 @@
 # RaSNESk — a Super Nintendo Emulator for VCV Rack
 
-Every SNES game builds its own sampler.
+Every SNES game builds its own sampler for VCV Rack voltage control. 
 
 The console's sound chip is a computer of its own — an SPC-700, 64K of its own
 RAM and an eight-voice sample player — and the cartridge has no direct access
