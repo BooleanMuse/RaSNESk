@@ -11,6 +11,7 @@ Every game brings a different driver and a different set of instruments. That
 is why each one sounds like itself, and it is why an `.spc` keeps playing
 after the console is switched off: the sound chip was never listening to the
 console in the first place.
+
 ---
 
 ## RaSNESk — the console
