@@ -19,43 +19,8 @@ console in the first place.
 
 
 Drop a `.sfc`, `.smc`, `.swc` or `.fig` on the cartridge button and it
-runs on the panel at sixty frames a second.
+runs on the panel.
 
-**Play it with a gamepad.** Any pad Rack can see: GLFW ships mappings for
-several hundred of them, so a controller it recognises works with no setup at
-all, and the right-click menu will teach it one it does not. **Or with the
-keyboard** — the arrows, Z and X, Enter for start, and every key remappable
-the same way. Both are in the right-click menu; the keyboard is off until you
-ask for it, because while it is on those keys go to the game.
-
-The controller's face on the console's lid lights up when a real pad is
-plugged in, and clicking it opens the mapping — every one of the twelve
-buttons, for the pad and for the keyboard. Click a button, press the one you
-want, and the face blinks until you do. That is everything the panel says
-about gamepads.
-
-The twelve button jacks are laid out as the controller itself: a cross, a
-diamond of four on its grey disc in the colours the machine used, two pills in
-the middle and two shoulders on top. A row of twelve sockets labelled UP DOWN
-LEFT RIGHT would carry the same signals and tell you nothing.
-
-The picture is 384 x 336 — three panel pixels to every two of the console's,
-which is as large as a Super Nintendo gets on a 3U panel: twice size would be
-152 mm down and a panel is 128.7. `<` and `>`
-walk the rest of the folder it came from. Coprocessors and all: SuperFX, SA-1,
-the DSP chips, the Super Game Boy.
-
-**CLOCK is the crystal.** Patch it and the whole machine — picture, music and
-pitch together — runs at whatever rate you give it, from a crawl to past
-double. That is one setting, not a special mode: the sound comes out of the
-same buffer the machine fills, read at the speed the machine is running, so a
-slow clock is a slow tape and sounds like one. The right-click menu offers the
-other reading of a clock, **Strobe**, where the machine keeps running at sixty
-and the picture is what holds.
-
-**RATE** is a volt to the octave on that crystal: 0 is sixty frames a second,
-+1 is a hundred and twenty, −1 is thirty. It multiplies whatever CLOCK is
-doing, and works on its own when nothing is patched.
 
 | Jack | |
 |---|---|
@@ -67,22 +32,6 @@ doing, and works on its own when nothing is patched.
 | **PAD 2** | the second player, as one polyphonic cable of twelve |
 | **PORT / WRITE** | four channels of one cable into the four letterboxes, written on a trigger. This is what the game's own code does to ask its sound driver for a song |
 
-The six buttons under the picture are a cartridge, two arrows, run, reset and
-a sound chip — a toolbar with pictures on it rather than words, which is the
-shape a Mario Paint screen has and the reason the panels are set in a 5x7 font
-of their own rather than in a typeface off the desktop. Each module wears a
-mascot on its lid instead of a sentence saying what it is.
-
-**RIP** takes the sound chip's 64K — the driver the cartridge uploaded, and
-every instrument it brought with it — and puts it where the other three
-modules can reach it. The right-click menu will also write it out as an `.spc`.
-
-Eight rows down the right-hand side show what each voice is doing: its
-envelope, which sample it has, and what note that works out to.
-
-There is **one console per process**, because bsnes keeps one of everything. A
-second SNES module says so on its screen rather than quietly sharing a CPU
-with the first.
 
 ---
 
@@ -95,12 +44,6 @@ module finds the instruments in it by walking the sample directory: an entry
 is real if its BRR chain ends properly and, when it says it loops, loops to a
 block inside itself. Nothing that was left uninitialised passes that.
 
-A SNES instrument has no name — it is a number in a table — so the panel draws
-its waveform, with a line where the loop starts.
-
-Then it plays them, on a sound chip of its own: the same code the console
-runs, compiled again so that it can be owned, with nobody else writing its
-registers. **Eight notes at once, because the chip has eight voices.**
 
 - **V/OCT** and **GATE** are polyphonic. **SAMPLE** is too — a polyphonic
   cable there picks a different instrument per note.
