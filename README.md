@@ -1,4 +1,4 @@
-# RaSNESk — a Super Nintendo for VCV Rack
+# RaSNESk — a Super Nintendo Emulator for VCV Rack
 
 Every SNES game builds its own sampler.
 
@@ -11,23 +11,13 @@ Every game brings a different driver and a different set of instruments. That
 is why each one sounds like itself, and it is why an `.spc` keeps playing
 after the console is switched off: the sound chip was never listening to the
 console in the first place.
-
-So: **the console is here to run a cartridge, and the other three modules are
-here to take what it uploaded and do something else with it.**
-
-```bash
-./build.sh install
-```
-
-That is the whole thing. The Rack SDK, bsnes's source and one stb header are
-fetched on first use; nothing has to be installed by hand. Restart Rack and
-look for **RaSNESk** under Viron Labs.
-
 ---
 
 ## RaSNESk — the console
+<img width="956" height="468" alt="Screenshot_20260913_162215" src="https://github.com/user-attachments/assets/c919dc91-cf67-4033-bd9b-45ea72f15406" />
 
-60 HP. Drop a `.sfc`, `.smc`, `.swc` or `.fig` on the cartridge button and it
+
+Drop a `.sfc`, `.smc`, `.swc` or `.fig` on the cartridge button and it
 runs on the panel at sixty frames a second.
 
 **Play it with a gamepad.** Any pad Rack can see: GLFW ships mappings for
@@ -96,8 +86,7 @@ with the first.
 ---
 
 ## SAMPLER — the cartridge's instruments
-
-24 HP, and the reason the rest of this exists.
+<img width="427" height="468" alt="Screenshot_20260913_162309" src="https://github.com/user-attachments/assets/9e02b922-cb6f-4d4e-9642-31a05c465eb9" />
 
 **TAKE** picks up whatever a SNES last ripped; **LOAD** reads an `.spc` or a
 raw `.brr`. Either way what arrives is 64K of sound-chip memory, and the
@@ -130,9 +119,10 @@ registers. **Eight notes at once, because the chip has eight voices.**
 
 ---
 
-## APU — the chip, alone
+## APU — the chip SPC-700
+<img width="427" height="468" alt="Screenshot_20260913_162405" src="https://github.com/user-attachments/assets/11530e77-8afa-42ea-ae53-c6172cce0031" />
 
-20 HP. An SPC-700, its 64K and an S-DSP, with the console taken away — which
+An SPC-700, its 64K and an S-DSP, with the console taken away — which
 is exactly what an `.spc` file is. **LOAD** plays one; **TAKE** picks up a
 song straight off the SNES module, so the music keeps going with the console
 switched off and the CPU free.
@@ -149,8 +139,9 @@ arrangement, transposed, tempo and all.
 ---
 
 ## BENDER — the circuit bending
+<img width="427" height="468" alt="Screenshot_20260913_162456" src="https://github.com/user-attachments/assets/15bea705-bfa5-4894-8cd6-b1fd208d2d29" />
 
-14 HP, either side of a SNES. An expander writes into buffers its neighbour
+An expander writes into buffers its neighbour
 has to have provided, so the console provides them: without that, a BENDER put
 beside a SNES writes through a null pointer and takes Rack with it. `./build.sh
 probe` now puts the two side by side, because one module on its own cannot
