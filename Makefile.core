@@ -1,0 +1,173 @@
+# ===========================================================================
+# The Super Nintendo, as a static library.
+#
+# Deliberately a separate make from the Rack plugin's. bsnes reaches its own
+# code as <sfc/sfc.hpp> and <nall/string.hpp> from a root that has to be on
+# the include path, and nall redefines enough of the language (`uint`, `auto`
+# as a return type everywhere, and an `#undef double` at the end of one of its
+# headers) that it has no business anywhere near a Rack plugin's sources.
+# Nothing here shares a flag with the plugin build: it produces one .a, and
+# the plugin links it and talks to it through headers of our own that mention
+# neither bsnes nor nall.
+#
+#   make -f Makefile.core RACK_DIR=<sdk>     -> build/core-<arch>/libsnescore.a
+#
+# Everything is built for whatever the Rack SDK says the target is, so this
+# cross-compiles with the plugin rather than beside it. Verified with GCC on
+# Linux, MinGW for Windows and Clang; bsnes itself needed no changes for any
+# of them.
+# ===========================================================================
+
+ifndef RACK_DIR
+$(error RACK_DIR is not defined -- run this through the plugin's Makefile)
+endif
+
+include $(RACK_DIR)/arch.mk
+
+BSNES   := third_party/bsnes-src/bsnes
+OBJDIR  ?= build/core-$(ARCH_NAME)
+OUT     ?= $(OBJDIR)/libsnescore.a
+
+CC      ?= gcc
+CXX     ?= g++
+AR      ?= ar
+
+# -w on upstream's code: its warnings are not ours to fix and they would bury
+# ours. Our own three files are built with warnings on, further down.
+#
+# -fno-strict-aliasing is not optional. bsnes reads its own memory through
+# whichever integer width the mapping asks for, and so does SameBoy.
+#
+# -O2, not -O3: bsnes is a large interpreter and -O3 inlines it out of the
+# instruction cache. Measured on one machine, min of three interleaved runs,
+# -O3 cost 17% more on Super Mario World and 6% more on Kirby Super Star.
+#
+# -fwrapv because bsnes relies on signed overflow wrapping, which is what
+# upstream builds with and is not optional at any optimisation level.
+FLAGS_UP := -O2 -g -fvisibility=hidden -fno-strict-aliasing -fwrapv -w
+
+# The same architecture flags the SDK compiles the plugin with, because the
+# two halves end up in one shared object.
+ifdef ARCH_X64
+	FLAGS_UP += -march=nehalem
+endif
+ifdef ARCH_ARM64
+	FLAGS_UP += -march=armv8-a+fp+simd
+endif
+
+ifdef CROSS_COMPILE
+	FLAGS_UP += --target=$(MACHINE)
+endif
+
+# Position-independent everywhere it means something: this ends up inside a
+# shared object. Windows DLLs are relocated differently and MinGW warns if
+# asked.
+ifndef ARCH_WIN
+	FLAGS_UP += -fPIC
+endif
+
+ifdef ARCH_MAC
+	FLAGS_UP += -mmacosx-version-min=10.9
+	CXXONLY  += -stdlib=libc++
+endif
+
+ifdef ARCH_WIN
+	FLAGS_UP += -D_USE_MATH_DEFINES
+endif
+
+CXXFLAGS_UP := -std=c++17 $(CXXONLY) $(FLAGS_UP) -Wno-narrowing -Wno-multichar
+CFLAGS_UP   := -std=gnu11 $(FLAGS_UP)
+
+CXXFLAGS_OURS := -std=c++17 $(CXXONLY) $(FLAGS_UP) \
+                 -Wall -Wextra -Wno-unused-parameter
+CXXFLAGS_OURS := $(filter-out -w,$(CXXFLAGS_OURS))
+
+# SNES_RACK_VOICE_TAPS   our patch: each of the eight voices, kept apart
+# NDEBUG                 upstream builds with assertions off
+DEFS := -DSNES_RACK_VOICE_TAPS -DNDEBUG
+
+INCS := -I$(BSNES) -I$(BSNES)/.. -Isrc
+
+# SameBoy's own build needs a pile of its own defines. GB_VERSION has to exist
+# or gb.c will not compile; nothing here ever shows it to anybody.
+# _GNU_SOURCE on every platform, Windows included: SameBoy calls vasprintf,
+# which MinGW only declares behind it.
+GB_DEFS := -DGB_INTERNAL -DGB_DISABLE_DEBUGGER -DGB_DISABLE_CHEATS \
+           -D_GNU_SOURCE -DGB_VERSION=\"bsnes\" -DNDEBUG -Wno-multichar
+
+# --- the console ----------------------------------------------------------
+# bsnes compiles each subsystem as one translation unit that #includes its
+# own parts, so this short list really is the whole emulator.
+SRC_CXX := \
+  $(BSNES)/emulator/emulator.cpp \
+  $(BSNES)/sfc/interface/interface.cpp \
+  $(BSNES)/sfc/system/system.cpp \
+  $(BSNES)/sfc/controller/controller.cpp \
+  $(BSNES)/sfc/cartridge/cartridge.cpp \
+  $(BSNES)/sfc/memory/memory.cpp \
+  $(BSNES)/sfc/cpu/cpu.cpp \
+  $(BSNES)/sfc/smp/smp.cpp \
+  $(BSNES)/sfc/dsp/dsp.cpp \
+  $(BSNES)/sfc/ppu/ppu.cpp \
+  $(BSNES)/sfc/ppu-fast/ppu.cpp \
+  $(BSNES)/sfc/expansion/expansion.cpp \
+  $(BSNES)/sfc/coprocessor/coprocessor.cpp \
+  $(BSNES)/sfc/slot/slot.cpp \
+  $(BSNES)/processor/arm7tdmi/arm7tdmi.cpp \
+  $(BSNES)/processor/gsu/gsu.cpp \
+  $(BSNES)/processor/hg51b/hg51b.cpp \
+  $(BSNES)/processor/spc700/spc700.cpp \
+  $(BSNES)/processor/upd96050/upd96050.cpp \
+  $(BSNES)/processor/wdc65816/wdc65816.cpp
+
+# --- ours: the seam between the console and the rack ----------------------
+SRC_OURS := src/snes/Console.cpp src/snes/Sdsp.cpp src/snes/Apu.cpp src/snes/Bank.cpp
+
+# --- the cooperative threading bsnes schedules its chips with --------------
+SRC_C := $(BSNES)/../libco/libco.c
+
+# --- SameBoy, because a Super Game Boy cartridge is a Game Boy -------------
+SRC_GB := $(addprefix $(BSNES)/gb/Core/, \
+  apu.c camera.c display.c gb.c joypad.c mbc.c memory.c printer.c random.c \
+  rewind.c rumble.c save_state.c sgb.c sm83_cpu.c timing.c)
+
+OBJ := $(patsubst %,$(OBJDIR)/%.o,$(SRC_CXX) $(SRC_OURS) $(SRC_C) $(SRC_GB))
+DEP := $(OBJ:.o=.d)
+
+all: $(OUT)
+
+$(OUT): $(OBJ)
+	@mkdir -p $(@D)
+	@rm -f $@
+	@echo "   ar  $@"
+	@$(AR) rcs $@ $^
+
+$(OBJDIR)/$(BSNES)/gb/Core/%.c.o: $(BSNES)/gb/Core/%.c
+	@mkdir -p $(@D)
+	@echo "   cc  $<"
+	@$(CC) $(CFLAGS_UP) $(GB_DEFS) -I$(BSNES)/gb -MMD -MP -c -o $@ $<
+
+$(OBJDIR)/%.c.o: %.c
+	@mkdir -p $(@D)
+	@echo "   cc  $<"
+	@$(CC) $(CFLAGS_UP) $(DEFS) $(INCS) -MMD -MP -c -o $@ $<
+
+# Our own seam files are the only C++ here that sees both bsnes's headers and
+# the plugin's vocabulary, so unlike everything above they are built with
+# warnings on: they are ours.
+$(OBJDIR)/src/%.cpp.o: src/%.cpp
+	@mkdir -p $(@D)
+	@echo "   c++ $<"
+	@$(CXX) $(CXXFLAGS_OURS) $(DEFS) $(INCS) -MMD -MP -c -o $@ $<
+
+$(OBJDIR)/%.cpp.o: %.cpp
+	@mkdir -p $(@D)
+	@echo "   c++ $<"
+	@$(CXX) $(CXXFLAGS_UP) $(DEFS) $(INCS) -MMD -MP -c -o $@ $<
+
+-include $(DEP)
+
+clean:
+	rm -rf $(OBJDIR)
+
+.PHONY: all clean

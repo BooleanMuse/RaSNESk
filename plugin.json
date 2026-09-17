@@ -1,0 +1,66 @@
+{
+  "slug": "RaSNESk",
+  "name": "RaSNESk",
+  "version": "1.0.0",
+  "license": "GPL-3.0-or-later",
+  "brand": "Viron Labs",
+  "author": "Viron Labs",
+  "authorEmail": "vironlabs@gmail.com",
+  "authorUrl": "https://vironlabs.com/",
+  "pluginUrl": "https://github.com/BooleanMuse/RaSNESk",
+  "manualUrl": "https://github.com/BooleanMuse/RaSNESk",
+  "sourceUrl": "https://github.com/BooleanMuse/RaSNESk",
+  "donateUrl": "https://ko-fi.com/skarmuse",
+  "changelogUrl": "",
+  "description": "A Super Nintendo in the rack, and its sound chip taken apart. Every SNES game builds its own sampler: the cartridge uploads a sound driver and a pile of BRR samples into the 64K of the sound chip when it boots, and from then on the music is that chip playing those samples. So the console is here to run a cartridge -- with a gamepad, if you have one -- and the other three modules are here to take what it uploaded and do something else with it: the eight voices on eight jacks, the instruments on a keyboard, the song carrying on with the console switched off.",
+  "modules": [
+    {
+      "slug": "Snes",
+      "name": "RaSNESk",
+      "description": "The console. Load a .sfc or .smc and it runs on the panel, gamepad and all -- a real one, through any pad Rack can see, with every button remappable. The eight voices of the sound chip leave on eight jacks of their own, dry, with a polyphonic pitch, gate, level and sample number beside them, so a game's music can play the rest of the rack. CLOCK is the crystal: patch it and the whole machine -- picture, music and pitch together -- runs at whatever rate you give it. RIP takes the sound chip's 64K, which is the cartridge's instruments and its sound driver, and puts it where the other three modules can reach it.",
+      "tags": [
+        "Sampler",
+        "Polyphonic",
+        "Visual",
+        "Game",
+        "Chiptune",
+        "Sequencer",
+        "Clock modulator"
+      ]
+    },
+    {
+      "slug": "Sampler",
+      "name": "Sampler",
+      "description": "A cartridge's instruments, on a keyboard. Takes the 64K a SNES uploaded -- from the console, from an .spc, or out of a patch file -- finds the BRR samples in its directory and plays them through a sound chip of its own, so the game cannot take its voices back. Eight-note polyphony, the chip's own gaussian interpolation, its real four-bit ADSR and its real echo, and the same sample can be picked per note by a polyphonic cable. This is the module for making something new out of a game's sounds.",
+      "tags": [
+        "Sampler",
+        "Polyphonic",
+        "Chiptune",
+        "Granular",
+        "Effect"
+      ]
+    },
+    {
+      "slug": "Apu",
+      "name": "APU",
+      "description": "The sound chip alone: an SPC-700, its 64K and an S-DSP, with the console taken away. That is exactly what an .spc file is, and this plays them. It also takes a song straight off the SNES module, so the music keeps going with the console switched off. The four ports are the only wire the console's CPU ever had to the sound chip: write them from the rack and you are asking the cartridge's own sound driver for a different song, the way the game's code does.",
+      "tags": [
+        "Sampler",
+        "Polyphonic",
+        "Chiptune",
+        "Sequencer"
+      ]
+    },
+    {
+      "slug": "Bender",
+      "name": "Bender",
+      "description": "The circuit bending, on an expander that goes either side of a SNES. It reaches inside a running cartridge without its cooperation: rotate, shift or drain the 256 colours on their way to the screen; transpose everything the sound chip is playing, at a volt to the octave; force the pitch-modulation and noise bits on so that voices start modulating each other; push the echo feedback past where the hardware would; and write random bytes into the tiles, the palette, the samples, or the whole of the sound chip's memory at once.",
+      "tags": [
+        "Expander",
+        "Effect",
+        "Visual",
+        "Utility"
+      ]
+    }
+  ]
+}

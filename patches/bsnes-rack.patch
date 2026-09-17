@@ -1,0 +1,135 @@
+diff --git a/bsnes/sfc/dsp/SPC_DSP.cpp b/bsnes/sfc/dsp/SPC_DSP.cpp
+index a89d491..9c04da2 100644
+--- a/bsnes/sfc/dsp/SPC_DSP.cpp
++++ b/bsnes/sfc/dsp/SPC_DSP.cpp
+@@ -515,6 +515,16 @@ inline void SPC_DSP::voice_output( voice_t const* v, int ch )
+ 	// Apply left/right volume
+ 	int amp = (m.t_output * (int8_t) VREG(v->regs,voll + ch)) >> 7;
+ 	
++#ifdef SNES_RACK_VOICE_TAPS
++	// This is the one place in the chip where a single voice still exists as
++	// a number. One line later it is part of a sum.
++	{
++		int const i = (int) (v - m.voices);
++		rack_t.voice [i] [ch] = amp;
++		if ( !ch ) rack_t.dry [i] = m.t_output;
++	}
++#endif
++	
+ 	// Add to output total
+ 	m.t_main_out [ch] += amp;
+ 	CLAMP16( m.t_main_out [ch] );
+@@ -719,6 +729,25 @@ ECHO_CLOCK( 27 )
+ 		r = 0;
+ 	}
+ 	
++#ifdef SNES_RACK_VOICE_TAPS
++	// The sample is finished: freeze everything that describes it. t_echo_in
++	// is still the echo that came back this sample; after clock 29 it is not.
++	rack_t.main [0] = l;
++	rack_t.main [1] = r;
++	rack_t.echo [0] = m.t_echo_in [0];
++	rack_t.echo [1] = m.t_echo_in [1];
++	rack_t.keyed    = 0;
++	
++	for ( int i = 0; i < voice_count; ++i )
++	{
++		voice_t const* rv = &m.voices [i];
++		rack_t.env   [i] = rv->t_envx_out;
++		rack_t.srcn  [i] = rv->regs [v_srcn];
++		rack_t.pitch [i] = GET_LE16( &rv->regs [v_pitchl] ) & 0x3fff;
++		if ( rv->env ) rack_t.keyed |= rv->vbit;
++	}
++#endif
++	
+ 	// Output sample to DAC
+ 	#ifdef SPC_DSP_OUT_HOOK
+ 		SPC_DSP_OUT_HOOK( l, r );
+diff --git a/bsnes/sfc/dsp/SPC_DSP.h b/bsnes/sfc/dsp/SPC_DSP.h
+index 50fd7be..d784d6c 100644
+--- a/bsnes/sfc/dsp/SPC_DSP.h
++++ b/bsnes/sfc/dsp/SPC_DSP.h
+@@ -235,6 +235,41 @@ private:
+ 
+ public:
+     bool mute() { return m.regs[r_flg] & 0x40; }
++
++#ifdef SNES_RACK_VOICE_TAPS
++	// ---------------------------------------------------------------------
++	// One sample of the chip, taken apart.
++	//
++	// The mix that reaches the DAC is the sum of eight voices, and by the
++	// time it is a sum there is no way back to the parts. These are the
++	// parts, filled in as the chip computes them and valid for exactly as
++	// long as the sample they belong to: read them when sample_count() has
++	// just grown, and they describe that sample.
++	//
++	// Everything is in the chip's own units -- signed 16-bit at 32 kHz --
++	// because a tap that rescaled would be a tap that lied.
++	// ---------------------------------------------------------------------
++	struct rack_taps_t
++	{
++		int voice [voice_count] [2];  // what each voice contributed to the mix,
++		                              // after its envelope and its own L/R volume
++		int dry   [voice_count];      // the same voice before its panning: what it
++		                              // sounds like on its own
++		int echo  [2];                // the echo bus coming back through the FIR
++		int main  [2];                // and what went out to the DAC
++
++		uint8_t env   [voice_count];  // envelope, 0..127, as ENVX reads it
++		uint8_t srcn  [voice_count];  // which sample in the directory it is playing
++		int     pitch [voice_count];  // its pitch register, 14 bits, 0x1000 = 1:1
++		uint8_t keyed;                // a bit per voice whose envelope is not silent
++	};
++
++	rack_taps_t const& rack_taps() const { return rack_t; }
++
++private:
++	rack_taps_t rack_t = {};
++public:
++#endif
+ };
+ 
+ #include <assert.h>
+diff --git a/bsnes/sfc/dsp/dsp.cpp b/bsnes/sfc/dsp/dsp.cpp
+index eb6f78b..03b53d9 100644
+--- a/bsnes/sfc/dsp/dsp.cpp
++++ b/bsnes/sfc/dsp/dsp.cpp
+@@ -25,6 +25,13 @@ auto DSP::main() -> void {
+       stream->sample(left, right);
+     }
+     spc_dsp.set_output(samplebuffer, 8192);
++
++#ifdef SNES_RACK_VOICE_TAPS
++    // count is 2 -- one stereo frame -- for every sample the chip finishes,
++    // so the taps standing in SPC_DSP right now belong to the sample that
++    // was just pushed above.
++    if(rackSink) rackSink(rackSinkContext, spc_dsp.rack_taps());
++#endif
+   }
+ }
+ 
+diff --git a/bsnes/sfc/dsp/dsp.hpp b/bsnes/sfc/dsp/dsp.hpp
+index 1cc97f0..8236542 100644
+--- a/bsnes/sfc/dsp/dsp.hpp
++++ b/bsnes/sfc/dsp/dsp.hpp
+@@ -16,6 +16,19 @@ struct DSP {
+ 
+   int64 clock = 0;
+ 
++#ifdef SNES_RACK_VOICE_TAPS
++  // Where the host wants each sample's eight voices delivered. A plain
++  // function pointer and a cookie rather than anything of nall's: the only
++  // code that sets this is a Rack plugin, which does not get to see nall.
++  using RackSink = void (*)(void* context, const SPC_DSP::rack_taps_t& taps);
++  RackSink rackSink = nullptr;
++  void*    rackSinkContext = nullptr;
++
++  // The ARAM, for a host that wants to take the sound driver and the samples
++  // the cartridge uploaded and go and do something else with them.
++  auto rackApuRam() -> uint8* { return apuram; }
++#endif
++
+ private:
+   bool fastDSP = false;
+   SPC_DSP spc_dsp;
