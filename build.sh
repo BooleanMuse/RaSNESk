@@ -2,7 +2,7 @@
 # ============================================================================
 # Builds the Super Nintendo for VCV Rack in one go.
 #
-#   ./build.sh                 -> plugin.so
+#   ./build.sh                 -> the plugin for this machine
 #   ./build.sh install         -> also installs it into your Rack (restart it)
 #   ./build.sh test   [rom]    -> the console, with no Rack and no window
 #   ./build.sh sampler [rom]   -> rips a cartridge's instruments and plays them
@@ -14,14 +14,23 @@
 #   ./build.sh dist            -> the .vcvplugin package for sharing
 #   ./build.sh clean
 #
-# The Rack SDK, bsnes's source and one stb header are fetched on first use and
-# nothing else is needed. This project never asks you to go and install
-# something by hand.
+# The Rack SDK and one stb header are fetched on first use; bsnes is already
+# in this repository. Nothing else is needed -- not even jq, which the SDK's
+# own makefile wants and which this script works around.
+#
+#   Linux    gcc or clang, and make
+#   macOS    the Xcode command line tools, plus `brew install zstd` for `dist`
+#   Windows  MSYS2's MINGW64 shell, with
+#            `pacman -S make patch zip unzip zstd mingw-w64-x86_64-gcc`
 # ============================================================================
 set -e
 cd "$(dirname "$0")"
 
-SDK_VER="${SDK_VER:-2.6.6}"
+# Pinned to the oldest Rack this is meant to run in rather than the newest
+# SDK there is: a plugin built against an SDK newer than somebody's Rack can
+# reach for a symbol their Rack does not have, and one built against an older
+# SDK runs in every 2.x after it.
+SDK_VER="${SDK_VER:-2.6.4}"
 
 SDK_DIR="${RACK_DIR:-third_party/Rack-SDK}"
 BSNES_DIR="third_party/bsnes-src"
@@ -38,7 +47,15 @@ ROM_DEFAULT="${SNES_ROM:-}"
 case "$(uname -s)" in
     Linux)  SDK_OS=lin-x64 ;;
     Darwin) SDK_OS=$([ "$(uname -m)" = "arm64" ] && echo mac-arm64 || echo mac-x64) ;;
-    *)      SDK_OS=win-x64 ;;
+    *)      SDK_OS=win-x64 ;;   # MSYS2 says MINGW64_NT-..., Cygwin says CYGWIN_NT-...
+esac
+
+# What the plugin is called once it is built, which is not the same word on
+# the three platforms and is what `install` has to copy.
+case "$SDK_OS" in
+    lin-x64) TARGET=plugin.so ;;
+    mac-*)   TARGET=plugin.dylib ;;
+    win-x64) TARGET=plugin.dll ;;
 esac
 
 need() {
@@ -48,9 +65,24 @@ need() {
 JOBS=$(nproc 2>/dev/null || echo 4)
 
 # plugin.mk reads these out of plugin.json with jq. Passing them on the command
-# line overrides that assignment outright, so jq never has to exist.
-SLUG=$(python3 -c 'import json;print(json.load(open("plugin.json"))["slug"])')
-VERSION=$(python3 -c 'import json;print(json.load(open("plugin.json"))["version"])')
+# line overrides that assignment outright, so jq never has to exist -- which
+# matters on a fresh MSYS2, where it does not. Three ways of reading two
+# strings out of a file, in the order of how much you can trust them.
+manifest() {
+    if command -v jq >/dev/null; then
+        jq -r ".$1" plugin.json
+    elif command -v python3 >/dev/null; then
+        python3 -c "import json;print(json.load(open('plugin.json'))['$1'])"
+    else
+        # Last resort: the two fields are one per line and quoted, and this
+        # file is written by hand rather than generated, so a line is enough.
+        grep -m1 "\"$1\"" plugin.json | cut -d'"' -f4
+    fi
+}
+
+SLUG=$(manifest slug)
+VERSION=$(manifest version)
+[ -n "$SLUG" ] && [ -n "$VERSION" ] || { echo "ERROR: could not read slug and version out of plugin.json"; exit 1; }
 MAKEVARS=(RACK_DIR="$SDK_DIR" SLUG="$SLUG" VERSION="$VERSION")
 
 # Cross-compiling: ./build.sh win  builds the Windows plugin from here, with
@@ -94,19 +126,26 @@ fetch_stb() {
         "https://raw.githubusercontent.com/nothings/stb/master/stb_image_write.h"
 }
 
-# bsnes is a git submodule and the Makefile owns both fetching and patching
-# it, so that `make dist` on its own is the whole build -- which is what the
-# library's toolchain runs, and it never runs this script.
-fetch_bsnes() {
-    need git
-    [ -f "$BSNES_DIR/bsnes/sfc/sfc.hpp" ] && return 0
-    echo "-- Fetching bsnes..."
-    git submodule update --init --recursive "$BSNES_DIR"
+# bsnes is not fetched: the whole of it is in this repository, under
+# third_party/bsnes-src, already carrying patches/bsnes-rack.patch. That is
+# what lets `make dist` on its own be the entire build, which is what the
+# library's toolchain runs -- it never runs this script, and it never has a
+# network.
+check_bsnes() {
+    [ -f "$BSNES_DIR/bsnes/sfc/sfc.hpp" ] \
+        && [ -f "$BSNES_DIR/libco/libco.h" ] \
+        && [ -d "$BSNES_DIR/nall" ] && return 0
+
+    echo "ERROR: the console's source is not here."
+    echo ""
+    echo "  $BSNES_DIR should hold bsnes entire -- bsnes/, nall/ and libco/"
+    echo "  at least. If it is missing or short, the clone did not finish."
+    exit 1
 }
 
 prepare() {
     fetch_sdk
-    fetch_bsnes
+    check_bsnes
 }
 
 # One library per target, because this cross-compiles.
@@ -158,7 +197,12 @@ bench)
     # Pinned to one core and measured in processor time rather than wall
     # clock: a laptop with a browser open will hand a benchmark somebody
     # else's twenty milliseconds and call it ours.
-    exec taskset -c 2 ./build/test/bench "${2:-$ROM_DEFAULT}" "${3:-8}" "${4:-0}" "${5:-1}"
+    # taskset is Linux's; macOS and Windows have nothing equivalent to reach
+    # for, so there the numbers are noisier and that is all.
+    if command -v taskset >/dev/null; then
+        exec taskset -c 2 ./build/test/bench "${2:-$ROM_DEFAULT}" "${3:-8}" "${4:-0}" "${5:-1}"
+    fi
+    exec ./build/test/bench "${2:-$ROM_DEFAULT}" "${3:-8}" "${4:-0}" "${5:-1}"
     ;;
 
 probe)
@@ -170,18 +214,63 @@ probe)
     # the browser makes, and the same check RackWidget::addModule makes, with
     # nothing else in the way.
     echo "-- Building the probe..."
-    mkdir -p build
+    # Its own directory: the probe writes build/probe/mix.wav, and on
+    # Linux a file called build/probe and a directory called build/probe
+    # cannot both exist.
+    mkdir -p build/probe
+
+    # The same three things the SDK's own compile.mk and plugin.mk do per
+    # platform, because this links against libRack without going through
+    # them: M_PI is not in <cmath> on Windows without the define, a Windows
+    # DLL is found on PATH rather than by rpath, and macOS resolves Rack's
+    # symbols at load time.
+    PROBE_FLAGS=()
+    PROBE_LINK=(-L"$SDK_DIR" -lRack)
+    case "$SDK_OS" in
+        win-x64)
+            PROBE_FLAGS+=(-D_USE_MATH_DEFINES)
+            PROBE_LINK+=(-static-libgcc
+                         -Wl,-Bstatic,--whole-archive -lwinpthread
+                         -Wl,--no-whole-archive -Wl,-Bdynamic)
+            ;;
+        mac-*)
+            PROBE_LINK+=(-Wl,-rpath,"$(cd "$SDK_DIR" && pwd)")
+            ;;
+        *)
+            PROBE_LINK+=(-Wl,-rpath,"$(cd "$SDK_DIR" && pwd)")
+            ;;
+    esac
+
     g++ -std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter \
+        "${PROBE_FLAGS[@]}" \
         -I"$SDK_DIR/include" -I"$SDK_DIR/dep/include" \
-        -o build/probe tools/probe/probe.cpp \
+        -o build/probe/probe tools/probe/probe.cpp \
         src/plugin.cpp src/modules/*.cpp \
         "$CORE" \
-        -L"$SDK_DIR" -lRack -Wl,-rpath,"$(cd "$SDK_DIR" && pwd)"
-    exec ./build/probe "${RACK_SYSTEM_DIR:-/home/vironlap/Documents/Software/Rack2Free}" \
-                       "${2:-$ROM_DEFAULT}"
+        "${PROBE_LINK[@]}"
+
+    # Where Rack itself is installed, for the fonts and the component SVGs the
+    # panels ask for. Override with RACK_SYSTEM_DIR.
+    case "$SDK_OS" in
+        win-x64) RACK_SYS="${RACK_SYSTEM_DIR:-C:/Program Files/VCV/Rack2Free}"
+                 # libRack.dll sits next to Rack.exe and is found on PATH.
+                 PATH="$(cygpath -u "$RACK_SYS" 2>/dev/null || echo "$RACK_SYS"):$PATH"
+                 export PATH ;;
+        mac-*)   RACK_SYS="${RACK_SYSTEM_DIR:-/Applications/Rack2Free.app/Contents/Resources}" ;;
+        *)       RACK_SYS="${RACK_SYSTEM_DIR:-/usr/share/Rack2}" ;;
+    esac
+
+    exec ./build/probe/probe "$RACK_SYS" "${2:-$ROM_DEFAULT}"
     ;;
 
 mockup)
+    # This one really is Linux-only: it opens an EGL context to draw into,
+    # and EGL is not what macOS or Windows offer. Nothing else here needs it.
+    if [ "$SDK_OS" != "lin-x64" ]; then
+        echo "-- ./build.sh mockup draws the panels through EGL, which is Linux's."
+        echo "   Everything else here builds on all three; this one does not."
+        exit 1
+    fi
     prepare; fetch_stb
     need g++
     echo "-- Drawing every panel..."
@@ -195,14 +284,16 @@ mockup)
 
 clean)
     make "${MAKEVARS[@]}" clean || true
-    rm -rf build plugin.so dist
-    echo "-- Cleaned. third_party/ is left alone; ./build.sh clean-all takes that too."
+    rm -rf build plugin.so plugin.dll plugin.dylib dist
+    echo "-- Cleaned. third_party/ is left alone; ./build.sh clean-all takes the SDK too."
     exit 0
     ;;
 
 clean-all)
     make "${MAKEVARS[@]}" clean || true
-    rm -rf build plugin.so dist third_party
+    rm -rf build plugin.so plugin.dll plugin.dylib dist
+    # Not third_party entire: the console lives there and is ours to keep.
+    rm -rf third_party/Rack-SDK third_party/Rack-SDK-win-x64 third_party/stb_image_write.h
     exit 0
     ;;
 
@@ -213,13 +304,42 @@ install)
     # Rack loads an unpacked plugin folder just as happily as a .vcvplugin,
     # and this way the install needs neither zstd nor jq on the machine doing
     # it.
-    DEST="${RACK_USER_DIR:-$HOME/.local/share/Rack2}/plugins-$SDK_OS/$SLUG"
-    case "$SDK_OS" in
-        mac-*) DEST="${RACK_USER_DIR:-$HOME/Library/Application Support/Rack2}/plugins-$SDK_OS/$SLUG" ;;
-    esac
+    # Where Rack keeps its user directory, which is a different place on each
+    # of the three. RACK_USER_DIR overrides the lot, and is the answer if any
+    # of this guesses wrong.
+    if [ -n "${RACK_USER_DIR:-}" ]; then
+        USER_DIR="$RACK_USER_DIR"
+    else
+        case "$SDK_OS" in
+        mac-*)
+            USER_DIR="$HOME/Library/Application Support/Rack2"
+            ;;
+        win-x64)
+            # %LOCALAPPDATA%, as a path this shell can write to. A MINGW64
+            # shell started the ordinary way has it; one started from
+            # somewhere that scrubbed the environment does not, and then it
+            # is worth asking Windows rather than installing into /Rack2,
+            # which is C:\msys64\Rack2 and is nobody's Rack.
+            win_local="${LOCALAPPDATA:-}"
+            [ -n "$win_local" ] || \
+                win_local=$(cmd //c echo %LOCALAPPDATA% 2>/dev/null | tr -d '\r')
+            case "$win_local" in ''|'%LOCALAPPDATA%')
+                echo "ERROR: cannot find %LOCALAPPDATA%. Set RACK_USER_DIR to Rack's"
+                echo "       user folder -- the one with plugins-win-x64 in it."
+                exit 1 ;;
+            esac
+            USER_DIR="$(cygpath -u "$win_local" 2>/dev/null || echo "$win_local")/Rack2"
+            ;;
+        *)
+            USER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/Rack2"
+            ;;
+        esac
+    fi
+
+    DEST="$USER_DIR/plugins-$SDK_OS/$SLUG"
 
     mkdir -p "$DEST"
-    cp plugin.so plugin.json "$DEST"/
+    cp "$TARGET" plugin.json "$DEST"/
     [ -f LICENSE.txt ] && cp LICENSE.txt "$DEST"/
 
     echo ""

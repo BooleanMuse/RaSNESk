@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -120,7 +121,10 @@ int main(int argc, char** argv)
     check(console.exportSpc(spc), "the console exported an .spc");
     check(spc.size() == 0x10200, "and it is the right size");
 
-    system("mkdir -p build/test/out");
+    // Not system("mkdir -p ..."): system() on Windows runs cmd.exe, which
+    // has no -p and answers "The syntax of the command is incorrect" --
+    // and then every file written here silently is not.
+    std::filesystem::create_directories("build/test/out");
     FILE* f = std::fopen("build/test/out/ripped.spc", "wb");
     if(f) { std::fwrite(spc.data(), 1, spc.size(), f); std::fclose(f); }
 

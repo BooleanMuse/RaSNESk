@@ -13,6 +13,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -158,7 +159,10 @@ int main(int argc, char** argv)
     check(songPeak > 0.02f, "the cartridge's sample played on our own chip");
     check(sounded > noteFrames * 4, "every note in the scale sounded");
 
-    system("mkdir -p build/test/out");
+    // Not system("mkdir -p ..."): system() on Windows runs cmd.exe, which
+    // has no -p and answers "The syntax of the command is incorrect" --
+    // and then every file written here silently is not.
+    std::filesystem::create_directories("build/test/out");
     writeWav("build/test/out/scale.wav", song, 2, (int)rate);
     writeWav("build/test/out/waveform.wav", wave, 1, (int)rate);
 

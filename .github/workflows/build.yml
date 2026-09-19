@@ -1,0 +1,118 @@
+# Builds RaSNESk for every platform VCV Rack runs on, on a push and on a tag.
+#
+# Each platform gets a checkout of its own. That matters: the Rack SDK
+# compiles into build/ without an architecture in the path, so two targets in
+# one working copy have to be cleaned between, and the surest way not to get
+# that wrong is never to share one.
+#
+# A tag of the form v2.0.0 also makes a release with the four .vcvplugin
+# packages attached, which is what a library submission points at.
+name: build
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # The oldest Rack this is meant to run in, rather than the newest SDK there
+  # is: a plugin built against an SDK newer than somebody's Rack can reach for
+  # a symbol their Rack does not have. Keep this the same as SDK_VER in
+  # build.sh.
+  RACK_SDK_VERSION: 2.6.4
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: lin-x64,   os: ubuntu-22.04,  sdk: lin-x64 }
+          - { name: win-x64,   os: windows-2022,  sdk: win-x64 }
+          - { name: mac-x64,   os: macos-13,      sdk: mac-x64 }
+          - { name: mac-arm64, os: macos-14,      sdk: mac-arm64 }
+
+    steps:
+      # bsnes is in the repository rather than a submodule, so this is an
+      # ordinary checkout and there is nothing to recurse into.
+      - uses: actions/checkout@v4
+
+      # MSYS2 gives Windows the same GCC, make, patch, jq and zstd everything
+      # else already has, so one Makefile serves all four. jq is not optional:
+      # the SDK's own plugin.mk reads the slug and the version out of
+      # plugin.json with it.
+      - name: Set up MSYS2
+        if: matrix.sdk == 'win-x64'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git make zip unzip curl zstd patch jq
+            mingw-w64-x86_64-gcc
+
+      # zstd is what a .vcvplugin is compressed with, and the macOS images do
+      # not have it.
+      - name: Tools (macOS)
+        if: startsWith(matrix.sdk, 'mac')
+        run: brew install zstd
+
+      - name: Fetch the Rack SDK
+        shell: bash
+        run: |
+          curl -L --fail -o sdk.zip \
+            "https://vcvrack.com/downloads/Rack-SDK-${RACK_SDK_VERSION}-${{ matrix.sdk }}.zip"
+          unzip -q sdk.zip
+          echo "RACK_DIR=$PWD/Rack-SDK" >> "$GITHUB_ENV"
+
+      - name: Build
+        if: matrix.sdk != 'win-x64'
+        run: make -j$(getconf _NPROCESSORS_ONLN) dist
+
+      # RACK_DIR is worked out inside MSYS2 rather than handed across from
+      # the other shell: the two disagree about what a path looks like, and
+      # the SDK sits in the working directory either way.
+      - name: Build (Windows)
+        if: matrix.sdk == 'win-x64'
+        shell: msys2 {0}
+        run: make -j$(nproc) dist RACK_DIR="$(pwd)/Rack-SDK"
+
+      # A plugin that quietly needs libgcc_s_seh-1.dll or libwinpthread-1.dll
+      # beside it loads on the machine that built it and nowhere else. The
+      # Makefile links both in; this is what says so.
+      - name: Check what the Windows plugin asks for
+        if: matrix.sdk == 'win-x64'
+        shell: msys2 {0}
+        run: |
+          objdump -p dist/*/plugin.dll | grep -i "DLL Name" | sort -u
+          if objdump -p dist/*/plugin.dll | grep -qiE "libgcc|libwinpthread|libstdc\+\+"; then
+            echo "::error::plugin.dll depends on a MinGW runtime DLL that will not be there"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RaSNESk-${{ matrix.name }}
+          path: dist/*.vcvplugin
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: packages/*/*.vcvplugin
+          generate_release_notes: true

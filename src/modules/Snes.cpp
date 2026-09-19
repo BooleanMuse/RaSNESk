@@ -21,6 +21,7 @@
 #include "../snes/Bank.hpp"
 #include "../snes/Sdsp.hpp"
 #include "../Gamepad.hpp"
+#include "../Path.hpp"
 
 #include <osdialog.h>
 
@@ -249,8 +250,7 @@ struct SnesModule : Module {
             trouble.clear();
             console.setRunning(running);
 
-            size_t slash = path.find_last_of('/');
-            folder = slash == std::string::npos ? "" : path.substr(0, slash);
+            folder = folderOf(path);
             pendingPath = path;
             running = true;
         }
@@ -546,7 +546,7 @@ struct SnesModule : Module {
 
         if(!path) return;
 
-        doLoad(path);
+        doLoad(normalizeSeparators(path));
         free(path);
     }
 
@@ -669,8 +669,7 @@ struct SnesModule : Module {
         std::vector<uint8_t> spc;
         if(!console.exportSpc(spc)) { trouble = "there was no song to take"; return; }
 
-        std::string suggested = cartName.empty() ? "song" : cartName;
-        for(char& c : suggested) if(c == '/' || c == ':') c = ' ';
+        std::string suggested = asFilename(cartName.empty() ? "song" : cartName);
         suggested += ".spc";
 
         osdialog_filters* filters = osdialog_filters_parse("SPC:spc");
@@ -681,7 +680,7 @@ struct SnesModule : Module {
 
         if(!path) return;
 
-        if(FILE* f = std::fopen(path, "wb"))
+        if(FILE* f = openBinary(normalizeSeparators(path), "wb"))
         {
             std::fwrite(spc.data(), 1, spc.size(), f);
             std::fclose(f);

@@ -22,6 +22,7 @@
 //   to keep up on average.
 // ===========================================================================
 #include "Console.hpp"
+#include "../Path.hpp"
 
 #include <emulator/emulator.hpp>
 #include <sfc/sfc.hpp>
@@ -903,9 +904,7 @@ bool Console::load(const std::string& path, std::string& error)
 
     std::vector<uint8_t> bytes(blob.data(), blob.data() + blob.size());
 
-    std::string leaf = path;
-    const size_t slash = leaf.find_last_of('/');
-    if(slash != std::string::npos) leaf = leaf.substr(slash + 1);
+    const std::string leaf = leafOf(path);
 
     return loadMemory(bytes, leaf, error);
 }

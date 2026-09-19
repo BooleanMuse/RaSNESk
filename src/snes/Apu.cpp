@@ -14,6 +14,7 @@
 // ===========================================================================
 #include "Apu.hpp"
 #include "Sdsp.hpp"
+#include "../Path.hpp"
 
 #include <emulator/emulator.hpp>
 #include <processor/spc700/spc700.hpp>
@@ -320,7 +321,7 @@ Apu::~Apu() { delete impl; }
 
 bool Apu::loadSpc(const std::string& path, std::string& error)
 {
-    FILE* f = std::fopen(path.c_str(), "rb");
+    FILE* f = openBinary(path, "rb");
     if(!f) { error = "could not read that file"; return false; }
 
     std::fseek(f, 0, SEEK_END);

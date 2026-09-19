@@ -403,12 +403,30 @@ static void expanders()
 // Processor time, not wall clock: a laptop with a browser open will hand a
 // benchmark twenty milliseconds of somebody else's work and call it ours, and
 // at this scale that is all you would be measuring.
+//
+// Except on Windows, which does not keep a per-process CPU clock anything
+// like this fine. MinGW's clock_gettime takes CLOCK_PROCESS_CPUTIME_ID and
+// answers zero, and GetProcessTimes -- what tests/bench uses, where the
+// measurement is seconds long -- moves in steps of about 16 ms, which is
+// three audio blocks. So there it is the wall clock, at the resolution
+// QueryPerformanceCounter gives, and the numbers carry whatever else the
+// machine was doing. `windowsClock` below is what says so in the output.
+#if defined(_WIN32)
+static const bool windowsClock = true;
+static double cpuSeconds()
+{
+    using namespace std::chrono;
+    return duration<double>(steady_clock::now().time_since_epoch()).count();
+}
+#else
+static const bool windowsClock = false;
 static double cpuSeconds()
 {
     timespec t;
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t);
     return t.tv_sec + t.tv_nsec * 1e-9;
 }
+#endif
 
 struct Cost { double mean, worst, share; };
 
@@ -477,6 +495,8 @@ static void performance(const char* cartridge)
     std::printf("\n== what the audio thread pays, at 44.1 kHz ==\n");
     std::printf("   (the machine is on its own thread; this is only the "
                 "draining)\n");
+    if(windowsClock)
+        std::printf("   (Windows: wall clock rather than processor time -- see cpuSeconds)\n");
 
     const float rate = 44100.f;
     const int   samples = (int)rate;      // one second of audio, timed

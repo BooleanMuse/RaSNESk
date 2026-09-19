@@ -14,6 +14,7 @@
 #include "stb_image_write.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -170,7 +171,10 @@ int main(int argc, char** argv)
     check(meanErr < 0.05, "the eight voices add up to the mix");
 
     // --- what came out ----------------------------------------------------
-    system("mkdir -p build/test/out");
+    // Not system("mkdir -p ..."): system() on Windows runs cmd.exe, which
+    // has no -p and answers "The syntax of the command is incorrect" --
+    // and then every file written here silently is not.
+    std::filesystem::create_directories("build/test/out");
     writeWav("build/test/out/mix.wav", mix, 2, (int)rate);
     for(int v = 0; v < VoiceCount; ++v)
     {
