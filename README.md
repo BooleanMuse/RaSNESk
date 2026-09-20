@@ -75,15 +75,6 @@ SDK compiles into `build/` *without* an architecture in the path, so
 `make clean` between targets is not optional. `.github/workflows/build.yml`
 gives each platform a checkout of its own and never has to think about it.
 
-Pushing a tag of the form `v2.0.0` builds all four targets -- Linux, Windows,
-Intel macOS and Apple Silicon -- and attaches the `.vcvplugin` packages to a
-release, which is what a library submission points at.
-
-> **On the version number.** Rack loads a plugin only if the plugin's *major*
-> version matches its own, so the first release of this for Rack 2 is
-> `2.0.0` rather than `1.0.0`. That is the rule in
-> [the manual](https://vcvrack.com/manual/Version), and a plugin numbered
-> `1.x` is simply skipped at startup with a line in `log.txt`.
 
 ---
 
