@@ -1,0 +1,43 @@
+# Line endings: LF in the repository, and LF in every working tree.
+#
+# One Makefile and one shell script serve Linux, macOS and Windows, and on
+# Windows they are run under MSYS2. Nothing there tolerates a carriage
+# return: GNU make does not strip it, so `RACK_DIR ?= third_party/Rack-SDK`
+# becomes a directory that does not exist; `patch` will not match a CRLF
+# patch against LF sources; and a CRLF `build.sh` is a bad interpreter.
+#
+# Git for Windows ships with core.autocrlf=true, which is precisely what puts
+# them there. This overrides it for this repository, for everyone.
+* text=auto eol=lf
+
+# Things that must never be touched. `text=auto` already detects most of
+# them; these are the ones worth being explicit about, and the .a/.o/.dll
+# that a build leaves lying about.
+*.png    binary
+*.jpg    binary
+*.icns   binary
+*.ico    binary
+*.ttf    binary
+*.otf    binary
+*.wav    binary
+*.gb     binary
+*.gbc    binary
+*.sfc    binary
+*.smc    binary
+*.spc    binary
+*.brr    binary
+*.bin    binary
+*.rom    binary
+*.car    binary
+*.a      binary
+*.o      binary
+*.so     binary
+*.dll    binary
+*.dylib  binary
+*.zip    binary
+*.vcvplugin binary
+
+# The patch is applied by `patch`, which counts bytes. It is text, and it is
+# LF, and the rule above already says so -- this is here so that nobody
+# marking *.patch as binary somewhere else undoes it.
+*.patch  text eol=lf

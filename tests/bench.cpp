@@ -13,6 +13,14 @@
 #include <chrono>
 #include <ctime>
 #include <cstdio>
+
+#if defined(_WIN32)
+  // Before <windows.h>, always: it defines min and max as macros and drags in
+  // half of the Win32 API otherwise.
+  #define WIN32_LEAN_AND_MEAN
+  #define NOMINMAX
+  #include <windows.h>
+#endif
 #include <string>
 #include <vector>
 
@@ -24,9 +32,28 @@ using namespace racksnes;
 // the question is about.
 static double cpuSeconds()
 {
+#if defined(_WIN32)
+    // Windows has no CLOCK_PROCESS_CPUTIME_ID. MinGW's clock_gettime accepts
+    // the constant and answers zero, which reads as a console that costs
+    // nothing at all. GetProcessTimes is what Windows actually keeps: this
+    // process's kernel and user time, in hundreds of nanoseconds. Its
+    // granularity is about 16 ms, which over the seconds this measures is
+    // noise and over a single audio block would be the whole answer -- see
+    // tools/probe, which measures per block and so uses a different clock.
+    FILETIME creation, exited, kernel, user;
+    if(!GetProcessTimes(GetCurrentProcess(), &creation, &exited, &kernel, &user))
+        return 0.0;
+
+    auto hundredNanoseconds = [](const FILETIME& f) -> unsigned long long {
+        return ((unsigned long long)f.dwHighDateTime << 32) | f.dwLowDateTime;
+    };
+
+    return (hundredNanoseconds(kernel) + hundredNanoseconds(user)) * 1e-7;
+#else
     timespec t;
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t);
     return t.tv_sec + t.tv_nsec * 1e-9;
+#endif
 }
 
 int main(int argc, char** argv)

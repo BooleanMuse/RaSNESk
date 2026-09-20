@@ -18,6 +18,7 @@
 #include "../widgets/Widgets.hpp"
 #include "../snes/Bank.hpp"
 #include "../snes/Sdsp.hpp"
+#include "../Path.hpp"
 
 #include <osdialog.h>
 
@@ -408,7 +409,7 @@ struct SamplerModule : Module {
 
         if(!path) return;
 
-        std::string p = path;
+        std::string p = normalizeSeparators(path);
         free(path);
 
         std::string error;

@@ -2,6 +2,7 @@
 // Reading a cartridge's instruments out of 64K of sound-chip RAM.
 // ===========================================================================
 #include "Bank.hpp"
+#include "../Path.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -267,7 +268,7 @@ void Bank::decode(int srcn, std::vector<float>& out, int limitFrames) const
 // ---------------------------------------------------------------------------
 bool Bank::loadSpc(const std::string& path, std::string& error)
 {
-    FILE* f = std::fopen(path.c_str(), "rb");
+    FILE* f = openBinary(path, "rb");
     if(!f) { error = "could not read that file"; return false; }
 
     std::vector<uint8_t> blob;
@@ -303,7 +304,7 @@ bool Bank::loadSpc(const std::string& path, std::string& error)
 
 bool Bank::loadRaw(const std::string& path, std::string& error)
 {
-    FILE* f = std::fopen(path.c_str(), "rb");
+    FILE* f = openBinary(path, "rb");
     if(!f) { error = "could not read that file"; return false; }
 
     std::memset(memory, 0, sizeof memory);
@@ -331,8 +332,7 @@ bool Bank::loadRaw(const std::string& path, std::string& error)
     memory[0x100] = at & 0xff; memory[0x101] = at >> 8;
     memory[0x102] = at & 0xff; memory[0x103] = at >> 8;
 
-    size_t slash = path.find_last_of('/');
-    title = slash == std::string::npos ? path : path.substr(slash + 1);
+    title = leafOf(path);
     present = true;
     ++stamp;
     scan();

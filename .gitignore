@@ -1,0 +1,27 @@
+# What a build leaves behind.
+/build/
+/dist/
+/plugin.so
+/plugin.dll
+/plugin.dylib
+*.vcvplugin
+
+# The stamp that says bsnes has been patched: a build artefact, and it lives
+# inside the console's own tree rather than in build/ because that is where
+# the thing it describes is.
+/third_party/bsnes-src/.rasnesk-patched
+
+# third_party/ holds two things: the console, which is ours to keep, and the
+# Rack SDK, which build.sh fetches and nobody should commit.
+/third_party/*
+!/third_party/bsnes-src
+
+# Cartridges are not ours to distribute.
+Roms/
+roms/
+*.sfc
+*.smc
+*.swc
+*.fig
+*.srm
+*.frz

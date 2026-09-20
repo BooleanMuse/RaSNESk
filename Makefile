@@ -7,8 +7,14 @@
 #
 # This is the whole build: `make dist` with RACK_DIR pointing at a Rack SDK is
 # all the library's toolchain runs, and all it needs. It fetches nothing from
-# the network -- bsnes is a submodule -- and it cross-compiles wherever the
-# SDK does, which is Linux, Windows and both flavours of macOS.
+# the network -- bsnes is in this repository, under third_party/bsnes-src --
+# and it cross-compiles wherever the SDK does, which is Linux, Windows and
+# both flavours of macOS.
+#
+# The one thing it does need on the machine is `jq`, which the SDK's own
+# plugin.mk uses to read the slug and the version out of plugin.json. Linux
+# and macOS runners have it; on Windows it is
+# `pacman -S jq` inside MSYS2, and ./build.sh works without it either way.
 #
 # ./build.sh is a friendlier wrapper around the same thing, with the tests and
 # the panel mockups; nothing here depends on it.
@@ -65,20 +71,31 @@ include $(RACK_DIR)/plugin.mk
 ifdef ARCH_WIN
 	LDFLAGS += -static-libgcc
 	LDFLAGS += -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive
+	# -Bstatic stays in force for everything the linker is given after it, so
+	# it is turned off again here rather than left for the next person to
+	# discover by adding a library and finding it linked the wrong way.
+	LDFLAGS += -Wl,-Bdynamic
 endif
 
-# bsnes is a submodule, and our one change to it is a patch applied here
-# rather than a fork: it is eighty lines in two files, and a fork would be a
-# thing to maintain. The stamp is what stops it being applied twice.
+# Our one change to bsnes is a patch rather than a fork: it is eighty lines in
+# two files, and a fork would be a thing to maintain. The copy in
+# third_party/ is committed with the patch already applied, so on a fresh
+# clone this sees that and does nothing; it is here so that the change stays
+# legible, and so that a bsnes updated from upstream is patched on the way
+# past. The stamp is what stops it being applied twice.
 BSNES_DIR   := third_party/bsnes-src
 BSNES_STAMP := $(BSNES_DIR)/.rasnesk-patched
 
 $(BSNES_DIR)/bsnes/sfc/sfc.hpp:
-	@echo "-- Fetching bsnes..."
-	git submodule update --init --recursive $(BSNES_DIR)
+	@echo "The console's source is not here: $@ is missing."
+	@echo ""
+	@echo "bsnes is not fetched, it is in this repository -- the whole of it,"
+	@echo "under $(BSNES_DIR), because a plugin that cannot be built"
+	@echo "from its own checkout is a plugin that cannot be built by the"
+	@echo "library's toolchain either. If that directory is empty or short,"
+	@echo "the clone did not finish; clone it again."
+	@false
 
-# Not --depth 1: the submodule is pinned to a commit, and a shallow fetch
-# brings back whatever the branch tip is today, which is not it.
 $(BSNES_STAMP): patches/bsnes-rack.patch $(BSNES_DIR)/bsnes/sfc/sfc.hpp
 	@cd $(BSNES_DIR) && \
 	if patch -p1 -R --dry-run --silent < ../../patches/bsnes-rack.patch >/dev/null 2>&1; then \
